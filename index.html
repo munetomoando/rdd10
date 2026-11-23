@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="author" content="安藤至大">
+<title>回帰不連続デザイン（RDD） | R実証 第10章</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Zen+Maru+Gothic:wght@700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false})"></script>
+<style>
+<style>
+:root {
+  --bg: #fffcf5; --surface: #ffffff; --ink: #1d2140; --muted: #4a4f6a;
+  --line: #1d2140; --shadow: #1d2140;
+  --accent: #2747d6; --accent-soft: #e6ebff;
+  --coral: #ff6f59; --coral-soft: #ffe8e3;
+  --yellow: #ffc83d; --yellow-soft: #fff4d4;
+  --pass-fill: #3ccf91; --pass-soft: #ddf7ea;
+  --code-bg: #f6f3ea; --out-bg: #ffffff; --err: #b3261e; --warn: #8a5a00;
+  --on-fill: #1d2140;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14173a; --surface: #1f2452; --ink: #fff8ea; --muted: #c3c6e0;
+    --line: #fff8ea; --shadow: #070920;
+    --accent: #8fa6ff; --accent-soft: #2a3170;
+    --coral-soft: #4a2a33; --yellow-soft: #4a3f1f; --pass-soft: #1e4a3c;
+    --code-bg: #171b44; --out-bg: #12153a; --err: #ff9b8f; --warn: #ffd27a;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 72px; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "Noto Sans JP", system-ui, sans-serif; font-size: 16px; line-height: 1.85;
+}
+h1, h2, h3, .btn, .label, .status, nav { font-family: "Zen Maru Gothic", "Noto Sans JP", sans-serif; }
+a { color: var(--accent); text-underline-offset: 3px; }
+code { font-family: var(--mono); font-size: .92em; background: var(--code-bg); padding: .05em .35em; border-radius: 6px; }
+
+/* ヘッダーと状態バー */
+.topbar {
+  position: sticky; top: 0; z-index: 10; background: var(--surface);
+  border-bottom: 2px solid var(--line);
+}
+.topbar-inner { max-width: 980px; margin: 0 auto; padding: 8px 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.topbar .course { font-family: "Zen Maru Gothic", sans-serif; font-weight: 900; margin-right: auto; }
+.status { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--muted); }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); border: 2px solid var(--line); }
+.status[data-phase="ready"] .dot { background: var(--pass-fill); }
+.status[data-phase="starting"] .dot, .status[data-phase="busy"] .dot { background: var(--yellow); animation: blink 1s steps(2) infinite; }
+.status[data-phase="failed"] .dot { background: var(--coral); }
+@keyframes blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none !important; } }
+@media (max-width: 600px) { .topbar { position: static; } html { scroll-padding-top: 0; } }
+
+.wrap { max-width: 980px; margin: 0 auto; padding: 24px 20px 80px; }
+.hero { margin: 16px 0 28px; }
+.hero .date { display: inline-block; font-family: "Zen Maru Gothic", sans-serif; font-weight: 700; background: var(--yellow); color: var(--on-fill); border: 2px solid var(--line); border-radius: 999px; padding: 2px 14px; }
+.hero h1 { font-size: clamp(28px, 5vw, 42px); line-height: 1.3; margin: 12px 0 8px; font-weight: 900; }
+.hero p { color: var(--muted); margin: 0; max-width: 72ch; }
+
+.card { background: var(--surface); border: 2px solid var(--line); border-radius: 24px; box-shadow: 5px 5px 0 var(--shadow); padding: 20px 24px; margin: 20px 0; }
+.card h2 { margin-top: 0; }
+.howto { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.howto > div { border-radius: 16px; padding: 12px 16px; }
+.howto .local { background: var(--accent-soft); }
+.howto .web { background: var(--yellow-soft); }
+.howto h3 { margin: 0 0 4px; font-size: 17px; }
+.howto ul { margin: 4px 0 0; padding-left: 1.2em; }
+@media (max-width: 720px) { .howto { grid-template-columns: 1fr; } }
+
+nav.toc ol { margin: 0; padding-left: 0; list-style: none; counter-reset: sec; }
+nav.toc li { padding-left: 2.2em; position: relative; }
+nav.toc li:not(.tocpart)::before { counter-increment: sec; content: counter(sec) "."; position: absolute; left: .4em; color: var(--muted); }
+nav.toc li.tocpart { padding-left: 0; margin-top: 8px; font-family: "Zen Maru Gothic", sans-serif; font-weight: 900; color: var(--accent); }
+nav.toc li { font-weight: 700; }
+
+
+section { margin-top: 48px; }
+.part { margin: 64px 0 0; padding: 16px 20px; border: 2px solid var(--line); border-radius: 20px; background: var(--yellow); color: var(--on-fill); box-shadow: 5px 5px 0 var(--shadow); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+.part .partno { font-family: "Zen Maru Gothic", sans-serif; font-weight: 900; font-size: 15px; border: 2px solid var(--on-fill); border-radius: 999px; padding: 0 12px; background: #fff; }
+.part .parttitle { font-family: "Zen Maru Gothic", sans-serif; font-weight: 900; font-size: 22px; }
+.part .partnote { flex-basis: 100%; font-size: 14px; }
+h2 { font-size: 26px; font-weight: 900; line-height: 1.4; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 4px solid var(--coral); display: inline-block; }
+h3 { font-size: 20px; font-weight: 700; margin: 32px 0 8px; }
+.prose { max-width: 72ch; }
+.prose p { margin: .4em 0 .8em; }
+ol.steps { padding-left: 1.4em; max-width: 72ch; }
+ol.steps > li { margin-bottom: 10px; }
+
+.note, .warnbox, .tip { border: 2px solid var(--line); border-radius: 16px; padding: 12px 16px; margin: 16px 0; max-width: 78ch; }
+.note { background: var(--accent-soft); }
+.tip { background: var(--pass-soft); }
+.warnbox { background: var(--coral-soft); }
+.note > .label, .warnbox > .label, .tip > .label { font-weight: 900; display: block; margin-bottom: 2px; }
+.warnbox ul, .note ul, .tip ul { margin: 4px 0; padding-left: 1.2em; }
+
+/* 画像 */
+figure { margin: 12px 0 20px; max-width: 720px; }
+figure img { display: block; width: 100%; height: auto; border: 2px solid var(--line); border-radius: 12px; background: #fff; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 4px; }
+details.shots { margin: 8px 0 20px; max-width: 760px; }
+details.shots > summary { cursor: pointer; font-weight: 700; color: var(--accent); font-family: "Zen Maru Gothic", sans-serif; }
+details.shots[open] > summary { margin-bottom: 8px; }
+.shotgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.shotgrid figure { margin: 0; }
+.img-missing { border: 2px dashed var(--muted); border-radius: 12px; padding: 16px; color: var(--muted); font-size: 14px; }
+
+/* RStudio の画面構成図 */
+.panes { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 8px; max-width: 640px; margin: 12px 0 20px; border: 2px solid var(--line); border-radius: 16px; padding: 8px; background: var(--surface); }
+.pane { border: 2px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.6; min-height: 92px; }
+.pane b { display: block; font-family: "Zen Maru Gothic", sans-serif; font-size: 15px; }
+.pane.src { background: var(--yellow-soft); }
+figure.shot { max-width: 760px; margin: 12px 0 16px; }
+.shotbox { position: relative; }
+.shotbox img { display: block; width: 100%; height: auto; border: 2px solid var(--line); border-radius: 12px; }
+.badge { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font-family: "Zen Maru Gothic", sans-serif; font-weight: 900; font-size: clamp(11px, 2vw, 16px); color: #1d2140; border: 2px solid #1d2140; border-radius: 999px; padding: 2px 12px; box-shadow: 3px 3px 0 #1d2140; }
+.badge.b1 { background: #ffe9a8; } .badge.b2 { background: #cfd9ff; } .badge.b3 { background: #bdf0d6; } .badge.b4 { background: #ffd2c9; }
+.pane.con { background: var(--accent-soft); }
+.pane.env { background: var(--pass-soft); }
+.pane.files { background: var(--coral-soft); }
+
+/* コード */
+.code { border: 2px solid var(--line); border-radius: 16px; background: var(--code-bg); margin: 12px 0 18px; overflow: hidden; max-width: 860px; }
+.code-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 14px; border-bottom: 2px solid var(--line); background: var(--surface); flex-wrap: wrap; }
+.code-bar .where { font-size: 13px; font-weight: 700; color: var(--muted); margin-right: auto; font-family: "Zen Maru Gothic", sans-serif; }
+.btn { font-weight: 700; font-size: 14px; border: 2px solid var(--line); border-radius: 999px; padding: 3px 14px; cursor: pointer; background: var(--surface); color: var(--ink); box-shadow: 2px 2px 0 var(--shadow); }
+.btn:active { transform: translate(2px, 2px); box-shadow: none; }
+.btn:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.btn.copy { background: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.copy { color: #14173a; } }
+.btn.run { background: var(--yellow-soft); }
+.btn[disabled] { opacity: .55; cursor: wait; }
+.code textarea {
+  display: block; width: 100%; border: 0; resize: vertical; background: transparent; color: var(--ink);
+  font-family: var(--mono); font-size: 14.5px; line-height: 1.6; padding: 12px 14px; tab-size: 2; white-space: pre; overflow-x: auto;
+}
+.out { border-top: 2px dashed var(--line); background: var(--out-bg); padding: 10px 14px; }
+.out pre { margin: 0; font-family: var(--mono); font-size: 13.5px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+.out .echo { color: var(--muted); }
+.out .err { color: var(--err); font-weight: 700; }
+.out .warn { color: var(--warn); }
+.out .msg { color: var(--muted); }
+.out .note-line { color: var(--muted); font-style: italic; }
+.out .hint { font-family: "Noto Sans JP", sans-serif; white-space: normal; background: var(--coral-soft); border-radius: 10px; padding: 6px 10px; margin: 6px 0; font-size: 14px; color: var(--ink); }
+.out canvas { display: block; max-width: 100%; height: auto; margin: 8px 0; border: 1px solid var(--muted); border-radius: 8px; background: #fff; }
+.out img.plot { display: block; max-width: 100%; height: auto; margin: 8px 0; border: 1px solid var(--muted); border-radius: 8px; background: #fff; }
+.filenote { max-width: 980px; margin: 12px auto 0; padding: 0 20px; }
+.out .running { color: var(--muted); font-size: 14px; }
+.viewer { margin: 8px 0; }
+.viewer .vt { font-weight: 700; font-size: 14px; margin-bottom: 4px; font-family: "Zen Maru Gothic", sans-serif; }
+.viewer .scroll { max-height: 380px; overflow: auto; border: 1px solid var(--muted); border-radius: 8px; }
+.viewer table { border-collapse: collapse; font-family: var(--mono); font-size: 13px; }
+.viewer th, .viewer td { padding: 2px 10px; border-bottom: 1px solid rgba(127,127,127,.25); white-space: nowrap; text-align: right; }
+.viewer th { position: sticky; top: 0; background: var(--surface); }
+.viewer td:first-child, .viewer th:first-child { color: var(--muted); }
+.out-tools { display: flex; justify-content: flex-end; margin-top: 6px; }
+.out-tools button { font-size: 12px; padding: 1px 10px; box-shadow: none; }
+
+.quizbox { border: 2px solid var(--line); border-radius: 16px; padding: 12px 16px; margin: 16px 0; max-width: 78ch; background: var(--yellow-soft); }
+.quizbox > .label { font-weight: 900; display: block; margin-bottom: 2px; }
+.quizbox ul { margin: 4px 0; padding-left: 1.2em; }
+.src { font-size: 13px; color: var(--muted); margin: 6px 0 0; max-width: 78ch; line-height: 1.6; }
+.tablewrap { overflow-x: auto; max-width: 78ch; margin: 12px 0; }
+table.vars { border-collapse: collapse; font-size: 14.5px; width: 100%; background: var(--surface); border: 2px solid var(--line); border-radius: 12px; }
+table.vars.nums td { text-align: right; font-family: var(--mono); }
+table.vars.nums thead th:not(:first-child) { text-align: right; }
+table.vars th, table.vars td { text-align: left; padding: 6px 12px; border-bottom: 1px solid rgba(127,127,127,.3); vertical-align: top; }
+table.vars th { font-family: "Zen Maru Gothic", sans-serif; background: var(--accent-soft); }
+.formula { font-family: "Zen Maru Gothic", sans-serif; font-weight: 700; text-align: center; background: var(--surface); border: 2px dashed var(--line); border-radius: 12px; padding: 10px 16px; margin: 12px 0; max-width: 72ch; }
+.kbd { font-family: var(--mono); font-size: 13px; border: 1.5px solid var(--line); border-bottom-width: 3px; border-radius: 6px; padding: 0 6px; background: var(--surface); }
+footer { margin-top: 64px; color: var(--muted); font-size: 14px; border-top: 2px solid var(--line); padding-top: 16px; }
+</style>
+
+
+/* ---- 第10章用の追加 ---- */
+.hero .chapter { display: inline-block; font-family: "Zen Maru Gothic", sans-serif; font-weight: 700; background: var(--yellow); color: var(--on-fill); border: 2px solid var(--line); border-radius: 999px; padding: 2px 14px; }
+.math { max-width: 72ch; margin: 12px 0; padding: 6px 16px; background: var(--surface); border: 2px dashed var(--line); border-radius: 12px; overflow-x: auto; }
+.math .katex-display { margin: .6em 0; }
+figure.concept { max-width: 640px; margin: 12px 0 20px; }
+figure.concept svg { display: block; width: 100%; height: auto; border: 2px solid var(--line); border-radius: 12px; background: var(--surface); }
+figure.concept svg text { font-family: "Noto Sans JP", sans-serif; fill: var(--ink); }
+figure.concept .axis { stroke: var(--ink); stroke-width: 2; fill: none; }
+figure.concept .cut { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 5; }
+figure.concept .y1 { stroke: var(--coral); stroke-width: 4; fill: none; }
+figure.concept .y0 { stroke: var(--accent); stroke-width: 4; fill: none; }
+figure.concept .unobs { stroke-dasharray: 3 8; stroke-linecap: round; stroke-width: 3; opacity: .85; }
+figure.concept .tau { stroke: var(--ink); stroke-width: 2; }
+figure.concept .dotA { fill: var(--coral); } figure.concept .dotB { fill: var(--accent); }
+details.answer { margin: 8px 0 4px; }
+details.answer > summary { cursor: pointer; font-weight: 700; color: var(--accent); font-family: "Zen Maru Gothic", sans-serif; }
+details.answer > div { margin-top: 6px; padding: 8px 12px; background: var(--surface); border-radius: 10px; border: 1.5px solid var(--line); }
+.datadl { display: inline-block; margin-top: 4px; text-decoration: none; }
+.badge-adv { display: inline-block; font-family: "Zen Maru Gothic", sans-serif; font-size: 14px; font-weight: 900; vertical-align: middle; margin-left: 8px; padding: 0 10px; border: 2px solid var(--line); border-radius: 999px; background: var(--pass-soft); color: var(--ink); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <span class="course">R実証　第10章　回帰不連続デザイン</span>
+    <span class="status" id="rstatus" data-phase="idle" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="rstatus-text">ブラウザ版R：未起動</span></span>
+    <button class="btn" id="btn-start" type="button">ブラウザ版Rを準備</button>
+    <button class="btn" id="btn-restart" type="button" hidden>再起動</button>
+  </div>
+</div>
+
+<div class="filenote" id="filenote" hidden><div class="note" style="margin:0"><span class="label">このページはファイルとして直接開かれています</span>この開き方では「ブラウザで実行」が動かないことがあります（特にSafari）。Webページ（https:// で始まるURL）から開いてください。</div></div>
+
+<main class="wrap">
+  <header class="hero">
+    <span class="chapter">R実証　第10章</span>
+    <h1>回帰不連続デザイン（RDD）</h1>
+    <p>「前期の試験が60点未満なら補講を受ける」というルールを使って、補講が後期の成績を何点上げたのかを推定する。ブラウザの中でRを動かしながら、散布図を描き、60点の前後で平均を比べ、回帰分析でトリートメント効果を求めるところまでを一人で進められるようにした。</p>
+  </header>
+
+  <div class="card" id="howto">
+    <h2>このページの使い方</h2>
+    <div class="howto">
+      <div class="web">
+        <h3>ブラウザで進める</h3>
+        <ul>
+          <li>Rを入れなくても、このページ上でRが動く。コードの右上の「<b>▶ ブラウザで実行</b>」を押す</li>
+          <li>初回は読み込みに数十秒かかる。動かなくなったら上の「再起動」</li>
+          <li>データ（exam_rdd.csv）はページに入っているので、そのまま <code>read.csv()</code> で読み込める</li>
+        </ul>
+      </div>
+      <div class="local">
+        <h3>RStudioで進める</h3>
+        <ul>
+          <li>下のボタンからデータを保存し、作業ディレクトリ（プロジェクトのフォルダ）に置く</li>
+          <li>コードの右上の「<b>コピー</b>」を押して、RStudioのスクリプトに貼り付けて実行する</li>
+          <li><a class="btn datadl" id="dl-csv" href="exam_rdd.csv" download="exam_rdd.csv">exam_rdd.csv を保存</a></li>
+        </ul>
+      </div>
+    </div>
+    <p class="prose" style="margin:12px 0 0">コードは書き換えて実行できる。コード欄で <span class="kbd">Ctrl</span>＋<span class="kbd">Enter</span>（Macは <span class="kbd">⌘</span>＋<span class="kbd">Return</span>）を押しても実行できる。前のコードを実行していなくても、ブラウザ版では必要なデータや変数を自動で用意してから実行する。</p>
+  </div>
+
+  <nav class="card toc" aria-label="目次">
+    <ol>
+      <li><a href="#what">回帰不連続デザインとは</a></li>
+      <li><a href="#setting">例：補講授業の効果を調べる</a></li>
+      <li><a href="#read">データを読み込む</a></li>
+      <li><a href="#scatter">散布図を描く</a></li>
+      <li><a href="#compare">60点の前後で平均を比べる</a></li>
+      <li><a href="#continuity">トリートメント効果の識別：連続性条件</a></li>
+      <li><a href="#linear">回帰分析で効果を推定する（線形の場合）</a></li>
+      <li><a href="#robust">発展：推定結果を確かめる</a></li>
+      <li><a href="#apply">RDDが使えそうな状況を考える</a></li>
+      <li><a href="#summary">まとめ</a></li>
+    </ol>
+  </nav>
+
+  <!-- 1 -->
+  <section id="what">
+    <h2>1. 回帰不連続デザインとは</h2>
+    <div class="prose">
+      <p><b>回帰不連続デザイン</b>（regression discontinuity design, <b>RDD</b>。不連続回帰デザインとも呼ぶ）は、<b>準実験法</b>の一つである。特定の推定手法の名前ではなく、<b>データがどのように発生したか</b>という仕組みに注目した分析の考え方である。</p>
+      <p>使えるのは、ある個人がトリートメントグループ（処置を受ける側）とコントロールグループ（受けない側）のどちらに入るかが、<b>観測できる変数がある閾値（しきいち）を上回るかどうか</b>で決まっている状況である。</p>
+    </div>
+    <div class="note"><span class="label">ポイント</span>閾値のすぐ上の人とすぐ下の人は、処置を受けたかどうか以外はほとんど同じはずである。だから両者の結果の差を、処置の効果とみなせる。これがRDDの基本的なアイデアである。</div>
+  </section>
+
+  <!-- 2 -->
+  <section id="setting">
+    <h2>2. 例：補講授業の効果を調べる</h2>
+    <div class="prose">
+      <p>ある大学で、前期の試験の点数が \(c\) 点未満の学生に補講を実施する。後期の試験を受ける学生には、前期に補講を受けた学生と受けていない学生がいる。<b>補講の学習効果</b>を知りたい。</p>
+      <p>学生 \(i\) について、記号を次のように決める。</p>
+    </div>
+    <div class="tablewrap">
+      <table class="vars">
+        <thead><tr><th>記号</th><th>意味</th><th>データの変数</th></tr></thead>
+        <tbody>
+          <tr><td>\(Z_i\)</td><td>前期の試験の点数（割り当てを決める変数）</td><td><code>Z</code></td></tr>
+          <tr><td>\(Y_i\)</td><td>後期の試験の点数（結果）</td><td><code>Y</code></td></tr>
+          <tr><td>\(D_i\)</td><td>補講に参加していれば1、していなければ0</td><td><code>D</code>（あとで作る）</td></tr>
+          <tr><td>\(Y_{1i}\)</td><td>補講に参加した<b>場合</b>の後期の点数</td><td rowspan="2">どちらか一方しか観察できない</td></tr>
+          <tr><td>\(Y_{0i}\)</td><td>補講に参加しなかった<b>場合</b>の後期の点数</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="prose">補講への参加は、前期の点数 \(Z_i\) だけで次のように決まる。</p>
+    <div class="math">\[ D_i = \begin{cases} 1 & \text{if } Z_i < c \\ 0 & \text{if } Z_i \geq c \end{cases} \]</div>
+    <p class="prose">実際に観察できるのは \(Y_{1i}\) と \(Y_{0i}\) のどちらか一方だけである（前期の点数に応じて決まる）。この例では <b>\(c = 60\)</b>、つまり前期の点数が60点未満の学生が補講を受けている。使うデータは、200人分の \((Y_i, Z_i)\) である。</p>
+  </section>
+
+  <!-- 3 -->
+  <section id="read">
+    <h2>3. データを読み込む</h2>
+    <p class="prose">まずデータを読み込んで、<code>exam_rdd</code> という名前をつける。</p>
+    <div class="code" data-where="データの読み込み"><textarea rows="1">exam_rdd <- read.csv("exam_rdd.csv")</textarea></div>
+    <div class="tip"><span class="label">RStudioで進めている場合</span>上の「exam_rdd.csv を保存」で保存したファイルを、作業ディレクトリに置いてから実行する。置き場所が分からなければ、RStudioの Console で <code>getwd()</code> を実行すると作業ディレクトリが表示される。<span id="url-note"></span></div>
+    <p class="prose">中身を確かめよう。<code>head()</code> は先頭の6行、<code>nrow()</code> は行数（人数）、<code>summary()</code> は各変数の要約を表示する。</p>
+    <div class="code" data-where="データの確認" data-pre="exam_rdd"><textarea rows="3">head(exam_rdd)
+nrow(exam_rdd)
+summary(exam_rdd)</textarea></div>
+    <p class="prose">表の形で全体を見たいときは <code>View()</code> を使う。</p>
+    <div class="code" data-where="データを表で見る" data-pre="exam_rdd"><textarea rows="1">View(exam_rdd)</textarea></div>
+  </section>
+
+  <!-- 4 -->
+  <section id="scatter">
+    <h2>4. 散布図を描く</h2>
+    <p class="prose">横軸に前期の点数 <code>Z</code>、縦軸に後期の点数 <code>Y</code> をとって散布図を描く。<code>plot(横軸, 縦軸)</code> の順に指定する。</p>
+    <div class="code" data-where="散布図" data-pre="exam_rdd"><textarea rows="1">plot(exam_rdd$Z, exam_rdd$Y)</textarea></div>
+    <div class="warnbox"><span class="label">つまずきやすい点</span><code>plot(exam_rdd)</code> と書いても図は描けるが、データの列の順番どおりに軸が決まるため、<b>横軸と縦軸が逆</b>になってしまう。下で試して、上の図と比べてみよう。分析したい関係（何が何に影響するか）に合わせて、軸は自分で指定したほうがよい。</div>
+    <div class="code" data-where="軸を指定しない場合" data-pre="exam_rdd"><textarea rows="1">plot(exam_rdd)</textarea></div>
+    <p class="prose">前期の点数が高い学生ほど、後期の点数も高いという<b>右上がりの傾向</b>がある。補講の境目である60点のところに縦線を引き、補講を受けた学生（60点未満）と受けていない学生で色を分けてみよう。</p>
+    <div class="code" data-where="60点で色分けした散布図" data-pre="exam_rdd"><textarea rows="5">plot(exam_rdd$Z, exam_rdd$Y,
+     col = ifelse(exam_rdd$Z < 60, "tomato", "steelblue"), pch = 19,
+     xlab = "前期の点数 Z", ylab = "後期の点数 Y")
+abline(v = 60, lty = 2)
+legend("topleft", legend = c("補講あり（60点未満）", "補講なし（60点以上）"), col = c("tomato", "steelblue"), pch = 19)</textarea></div>
+    <div class="quizbox"><span class="label">考えてみよう</span>
+      <ul>
+        <li>60点の少し上（たとえば60〜65点）と少し下（55〜60点）の学生を見比べると、後期の点数はどちらが高そうか。</li>
+      </ul>
+      <details class="answer"><summary>答えの例を見る</summary><div>図を見ると、前期が60点の<b>少し下</b>だった学生のほうが、後期の成績が平均的には高い傾向がある。全体としては右上がりなのに、60点のところで点の集まりが段差のように下にずれている。次の節で、実際に平均を計算して確かめる。</div></details>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section id="compare">
+    <h2>5. 60点の前後で平均を比べる</h2>
+    <p class="prose">前期が<b>60点以上65点未満</b>の学生と、<b>55点以上60点未満</b>の学生について、後期の平均点を求める。<code>exam_rdd$Y[条件]</code> と書くと、条件にあてはまる学生の <code>Y</code> だけを取り出せる。条件を2つとも満たす、は <code>&amp;</code> でつなぐ。</p>
+    <div class="code" data-where="60点以上65点未満の平均" data-pre="exam_rdd"><textarea rows="3">average65 <- mean(exam_rdd$Y[exam_rdd$Z >= 60 & exam_rdd$Z < 65])
+
+print(average65)</textarea></div>
+    <div class="code" data-where="55点以上60点未満の平均" data-pre="exam_rdd"><textarea rows="3">average55 <- mean(exam_rdd$Y[exam_rdd$Z < 60 & exam_rdd$Z >= 55])
+
+print(average55)</textarea></div>
+    <div class="prose">
+      <p>前者は約62.07点、後者は約72.73点になる。60点より少し下で<b>補講を受けた学生のほうが、後期の成績が10点以上高い</b>。</p>
+      <p>前期の試験で60点の少し上と少し下の学生の間には、学力の差はほとんどないはずである。それなのに後期の点数にこれだけの差があるのは、補講の効果だと考えてよいのではないか。</p>
+    </div>
+    <div class="warnbox"><span class="label">注意</span>前期で60点を下回った学生が「まずい、単位を落としそうだ」と思って自分で勉強したことが効いている可能性もある。この場合、補講がなくても成績は上がったかもしれない。RDDで分かるのは「60点を下回ったこと」によって生じた差であり、それが補講そのものの効果だと言うには、ほかに60点を境に変わることがないかを考える必要がある。</div>
+    <h3>やってみよう：比べる幅を変える</h3>
+    <p class="prose">上では60点の前後5点ずつで比べた。この幅を2点、5点、10点と変えると、差はどう変わるだろうか。それぞれの幅に入る人数も表示する。</p>
+    <div class="code" data-where="幅を変えて比べる" data-pre="exam_rdd"><textarea rows="9">for (h in c(2, 5, 10)) {
+  below <- exam_rdd$Y[exam_rdd$Z < 60 & exam_rdd$Z >= 60 - h]   # 60点の少し下（補講あり）
+  above <- exam_rdd$Y[exam_rdd$Z >= 60 & exam_rdd$Z < 60 + h]   # 60点の少し上（補講なし）
+  cat("幅", h, "点：",
+      "下側", round(mean(below), 2), "（", length(below), "人）",
+      "上側", round(mean(above), 2), "（", length(above), "人）",
+      "差", round(mean(below) - mean(above), 2), "\n")
+}</textarea></div>
+    <div class="quizbox"><span class="label">考えてみよう</span>
+      <ul>
+        <li>幅を狭くすると、どんな良いことがあり、どんな困ったことがあるか。</li>
+      </ul>
+      <details class="answer"><summary>答えの例を見る</summary><div>幅を狭くするほど、比べる2つのグループの学力は似てくるので、比較は公平になる（バイアスが小さい）。その一方で、幅に入る人数が少なくなり、平均がたまたまの値に左右されやすくなる（ばらつきが大きい）。逆に幅を広げると人数は増えるが、右上がりの傾向の影響を受けて、60点から離れた学生どうしを比べることになる。次の節以降の回帰分析は、この右上がりの傾向を直線で取り除いたうえで、60点の位置での差を求める方法である。</div></details>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section id="continuity">
+    <h2>6. トリートメント効果の識別：連続性条件</h2>
+    <p class="prose">補講を受けた場合と受けなかった場合で後期の点数に違いがあるとしたら、前期の点数 \(Z\) と後期の点数の期待値（平均）の関係は、次の図のようになっているはずである。</p>
+    <figure class="concept">
+      <svg viewBox="0 0 640 380" role="img" aria-label="補講を受けた場合と受けなかった場合の、前期の点数と後期の点数の期待値の関係。閾値cのところで、実際に観察できる線が段差を持ち、その段差がトリートメント効果τである">
+        <line class="axis" x1="60" y1="330" x2="610" y2="330"/>
+        <line class="axis" x1="60" y1="330" x2="60" y2="30"/>
+        <text x="604" y="356" text-anchor="end" font-size="15">前期の点数 Z</text>
+        <text x="70" y="40" font-size="15">後期の点数</text>
+        <line class="cut" x1="340" y1="40" x2="340" y2="330"/>
+        <text x="340" y="354" text-anchor="middle" font-size="16" font-weight="700">c（60点）</text>
+        <!-- E[Y1|Z]：補講ありの場合（c未満で観察できる） -->
+        <line class="y1" x1="80" y1="250" x2="340" y2="160"/>
+        <line class="y1 unobs" x1="340" y1="160" x2="590" y2="73"/>
+        <!-- E[Y0|Z]：補講なしの場合（c以上で観察できる） -->
+        <line class="y0 unobs" x1="80" y1="300" x2="340" y2="210"/>
+        <line class="y0" x1="340" y1="210" x2="590" y2="123"/>
+        <line class="tau" x1="352" y1="164" x2="352" y2="206"/>
+        <line class="tau" x1="346" y1="164" x2="358" y2="164"/>
+        <line class="tau" x1="346" y1="206" x2="358" y2="206"/>
+        <text x="362" y="192" font-size="20" font-weight="700" font-style="italic">τ</text>
+        <circle class="dotA" cx="340" cy="160" r="6"/><circle class="dotB" cx="340" cy="210" r="6"/>
+        <text x="90" y="232" font-size="14">E[Y₁ | Z]：補講を受けた場合</text>
+        <text x="420" y="160" font-size="14">E[Y₀ | Z]：補講なしの場合</text>
+        <text x="150" y="318" font-size="13" opacity=".8">点線は観察できない部分</text>
+      </svg>
+      <figcaption>実線が実際に観察できる部分。c未満では補講を受けたデータだけが、c以上では補講を受けていないデータだけが手に入る。</figcaption>
+    </figure>
+    <div class="prose">
+      <p>実際に観察できるのは、\(c\) 以上については補講を受けていないデータ、\(c\) 未満については補講を受けたデータだけである。そこで、次の仮定をおく。</p>
+    </div>
+    <div class="note"><span class="label">連続性条件</span>前期の試験の点数 \(Z\) が \(c\) に近い個人どうしは比較可能である。つまり、もし補講という制度がなければ、後期の点数の期待値は \(c\) のところで<b>なめらかにつながっている</b>（ジャンプしない）。</div>
+    <p class="prose">この条件が成り立つなら、\(c\) のところで条件付き期待値がどれだけジャンプしたかを見れば、補講の効果 \(\tau\) が分かる。式で書くと、\(c\) のすぐ下からの極限と、すぐ上からの極限の差である。</p>
+    <div class="math">\[ \tau = \lim_{z \uparrow c} \mathbf{E}[Y_i \mid Z_i = z] \;-\; \lim_{z \downarrow c} \mathbf{E}[Y_i \mid Z_i = z] = \mathbf{E}[Y_{1i} - Y_{0i} \mid Z_i = c] \]</div>
+    <p class="prose">この \(\tau\) は、<b>前期の点数がちょうど \(c\) の学生にとっての</b>補講の平均的な効果（条件付平均トリートメント効果）である。</p>
+    <h3>確かめてみよう：60点の前後で人数が不自然に偏っていないか</h3>
+    <p class="prose">もし学生が「補講を受けたい（受けたくない）」と考えて自分の点数を調整できるなら、60点の直前や直後に人が集まり、閾値の前後の学生は比較可能でなくなる。前期の点数のヒストグラムを描いて、60点のところに不自然な山や谷がないかを見てみよう。</p>
+    <div class="code" data-where="前期の点数の分布" data-pre="exam_rdd"><textarea rows="2">hist(exam_rdd$Z, breaks = 20, main = "前期の点数の分布", xlab = "前期の点数 Z")
+abline(v = 60, col = "tomato", lwd = 2)</textarea></div>
+  </section>
+
+  <!-- 7 -->
+  <section id="linear">
+    <h2>7. 回帰分析で効果を推定する（線形の場合）</h2>
+    <p class="prose">前期の点数が後期の点数に与える影響が、補講あり・なしのどちらについても<b>直線（線形）</b>で表せるケースを考える。つまり、\(\mathbf{E}[Y_{1i} \mid Z_i]\) と \(\mathbf{E}[Y_{0i} \mid Z_i]\) がどちらも \(Z_i\) の一次関数であると仮定する。</p>
+    <h3>ステップ1：補講ダミー D を作る</h3>
+    <p class="prose">補講を受けていると1、受けていないと0になる変数 <code>D</code> を作る。<code>mutate()</code> は、データに新しい変数（列）を追加する関数である。<code>ifelse(条件, 当てはまるときの値, 当てはまらないときの値)</code> で0と1を作る。</p>
+    <div class="code" data-where="補講ダミーを作る" data-pre="exam_rdd"><textarea rows="3">library(dplyr)
+exam_rdd <- exam_rdd %>% mutate(D = ifelse(Z < 60, 1, 0))
+head(exam_rdd)</textarea></div>
+    <div class="tip"><span class="label">tidyverse と dplyr</span>教科書では <code>library(tidyverse)</code> と書いている。<code>mutate()</code> や <code>%&gt;%</code> は tidyverse に含まれる <b>dplyr</b> パッケージの機能なので、ここでは読み込みの軽い <code>library(dplyr)</code> にした。RStudioでは <code>library(tidyverse)</code> のままでも同じ結果になる。パッケージを使わずに <code>exam_rdd$D &lt;- ifelse(exam_rdd$Z &lt; 60, 1, 0)</code> と書いてもよい。</div>
+    <h3>ステップ2：推計式を決める</h3>
+    <p class="prose">知りたいのは、前期の点数が<b>ちょうど60点のところ</b>での補講の効果である。そこで推計式を次のようにする。</p>
+    <div class="math">\[ Y_i = \alpha_0 + \tau \cdot D_i + \beta_0 \cdot (Z_i - c) + (\beta_1 - \beta_0) \cdot D_i (Z_i - c) + \varepsilon_i \]</div>
+    <div class="prose">
+      <p>\(Z_i - c\) を使うのは、60点の位置を横軸の0に合わせるためである。こうすると、補講を受けた人と受けていない人の境目である前期60点のところでの差が、\(D_i\) の係数 \(\tau\) として直接求まる。</p>
+      <p>\(D_i(Z_i - c)\) は<b>交差項</b>で、補講あり・なしで直線の傾きが違ってもよいようにするためのものである。\(D_i\) に0と1を入れてみると、各係数の意味が分かる。</p>
+    </div>
+    <div class="tablewrap">
+      <table class="vars">
+        <thead><tr><th>グループ</th><th>式（\(\varepsilon_i\) は省略）</th><th>60点の位置（\(Z_i - c = 0\)）での値</th></tr></thead>
+        <tbody>
+          <tr><td>補講なし（\(D_i = 0\)）</td><td>\(\alpha_0 + \beta_0 (Z_i - c)\)</td><td>\(\alpha_0\)</td></tr>
+          <tr><td>補講あり（\(D_i = 1\)）</td><td>\((\alpha_0 + \tau) + \beta_1 (Z_i - c)\)</td><td>\(\alpha_0 + \tau\)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="prose">60点の位置での2本の直線の高さの差が、ちょうど \(\tau\) になっている。</p>
+    <h3>ステップ3：回帰分析をする</h3>
+    <p class="prose">60点を0に合わせた変数 <code>Zc</code>（= Z − 60）を作り、<code>lm()</code> で回帰分析をする。<code>D:Zc</code> は <code>D</code> と <code>Zc</code> の交差項を表す。</p>
+    <div class="code" data-where="回帰分析" data-pre="exam_rdd D" data-needs="dplyr"><textarea rows="3">exam_rdd <- exam_rdd %>% mutate(Zc = Z - 60)
+result <- lm(Y ~ D + Zc + D:Zc, data = exam_rdd)
+summary(result)</textarea></div>
+    <div class="prose">
+      <p>\(\tau\) の推定値は <code>D</code> の行の <code>Estimate</code> である。補講を受けることが後期の試験の点数に与える効果は<b>約13.0点</b>であり、<code>Pr(&gt;|t|)</code>（p値）がとても小さいので、統計的にも有意である。</p>
+    </div>
+    <div class="tablewrap">
+      <table class="vars">
+        <thead><tr><th>出力の行</th><th>対応する係数</th><th>意味</th></tr></thead>
+        <tbody>
+          <tr><td><code>(Intercept)</code></td><td>\(\alpha_0\)</td><td>補講なしの直線の、60点の位置での高さ</td></tr>
+          <tr><td><code>D</code></td><td>\(\tau\)</td><td><b>60点の位置での補講の効果</b></td></tr>
+          <tr><td><code>Zc</code></td><td>\(\beta_0\)</td><td>補講なしの直線の傾き（前期が1点高いと後期が何点高いか）</td></tr>
+          <tr><td><code>D:Zc</code></td><td>\(\beta_1 - \beta_0\)</td><td>補講ありとなしの傾きの違い</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="prose">必要な数字だけを取り出すこともできる。<code>coef()</code> は係数、<code>confint()</code> は95%信頼区間を返す。</p>
+    <div class="code" data-where="係数と信頼区間" data-pre="exam_rdd D Zc result"><textarea rows="2">coef(result)["D"]
+confint(result)["D", ]</textarea></div>
+    <h3>やってみよう：推定した直線を散布図に重ねる</h3>
+    <p class="prose">推定した2本の直線を散布図に描き入れると、60点の位置での段差 \(\tau\) が目で見える。</p>
+    <div class="code" data-where="回帰直線を重ねる" data-pre="exam_rdd D Zc result"><textarea rows="12">b <- coef(result)
+plot(exam_rdd$Zc, exam_rdd$Y,
+     col = ifelse(exam_rdd$D == 1, "tomato", "steelblue"), pch = 19,
+     xlab = "前期の点数 − 60", ylab = "後期の点数")
+abline(v = 0, lty = 2)
+# 補講なし（Zc >= 0）の直線
+curve(b["(Intercept)"] + b["Zc"] * x, from = 0, to = max(exam_rdd$Zc), add = TRUE, col = "steelblue", lwd = 3)
+# 補講あり（Zc < 0）の直線
+curve(b["(Intercept)"] + b["D"] + (b["Zc"] + b["D:Zc"]) * x, from = min(exam_rdd$Zc), to = 0, add = TRUE, col = "tomato", lwd = 3)
+# 60点の位置での段差が τ
+arrows(0, b["(Intercept)"], 0, b["(Intercept)"] + b["D"], code = 3, length = 0.08, lwd = 2)
+text(0, b["(Intercept)"] + b["D"] / 2, paste0("τ = ", round(b["D"], 1)), pos = 4)</textarea></div>
+    <div class="quizbox"><span class="label">確認問題</span>
+      <ul>
+        <li>補講を受けた学生の直線の傾き \(\beta_1\) はいくつか。<code>coef(result)</code> の値から計算してみよう。</li>
+        <li>前期が55点だった学生（補講あり）の後期の点数の予測値はいくつか。</li>
+      </ul>
+      <details class="answer"><summary>考え方を見る</summary><div>\(\beta_1\) は <code>Zc</code> の係数と <code>D:Zc</code> の係数の和である。55点の学生は \(D = 1\)、\(Z_i - c = -5\) なので、予測値は \(\alpha_0 + \tau + \beta_1 \times (-5)\) になる。下のコードで確かめられる。</div></details>
+    </div>
+    <div class="code" data-where="確認問題の計算" data-pre="exam_rdd D Zc result"><textarea rows="4">b <- coef(result)
+b["Zc"] + b["D:Zc"]                                  # β1：補講ありの傾き
+predict(result, newdata = data.frame(D = 1, Zc = -5))  # 前期55点の学生の予測値
+predict(result, newdata = data.frame(D = 0, Zc = 0))   # 前期60点・補講なしの予測値（= α0）</textarea></div>
+  </section>
+
+  <!-- 8 -->
+  <section id="robust">
+    <h2>8. 推定結果を確かめる<span class="badge-adv">発展</span></h2>
+    <p class="prose">上の推定は「データ全体で直線があてはまる」ことを前提にしている。この前提を変えても結果が大きく変わらないかを確かめておくと、結論に自信が持てる。</p>
+    <h3>60点に近い学生だけで推定する</h3>
+    <p class="prose">60点から遠い学生まで使うと、直線の仮定が正しくないときに結果がゆがむ。60点の前後10点（50点以上70点未満）の学生だけで同じ回帰をしてみよう。<code>subset =</code> で使う学生を絞れる。</p>
+    <div class="code" data-where="60点の前後10点だけで推定" data-pre="exam_rdd D Zc"><textarea rows="2">result10 <- lm(Y ~ D + Zc + D:Zc, data = exam_rdd, subset = abs(Zc) < 10)
+round(summary(result10)$coefficients["D", ], 4)</textarea></div>
+    <p class="prose">数字の <code>10</code> を <code>5</code> や <code>20</code> に変えて、\(\tau\) の推定値と標準誤差（<code>Std. Error</code>）がどう変わるかを見てみよう。</p>
+    <h3>条件付期待値が非線形の場合</h3>
+    <p class="prose">前期と後期の点数の関係が直線ではなく曲線かもしれない。そのときは、\((Z_i - c)\) の2乗の項も入れて、曲線をあてはめる。<code>I(Zc^2)</code> は「Zcの2乗」を式の中で計算するための書き方である。</p>
+    <div class="code" data-where="2次の項を加える" data-pre="exam_rdd D Zc"><textarea rows="2">result2 <- lm(Y ~ D + Zc + I(Zc^2) + D:Zc + D:I(Zc^2), data = exam_rdd)
+round(summary(result2)$coefficients["D", ], 4)</textarea></div>
+    <div class="note"><span class="label">ポイント</span>高い次数の項（3乗、4乗…）をむやみに増やすと、閾値付近の推定が不安定になりやすい。実際の研究では、閾値に近いデータだけを使って直線をあてはめる方法（局所線形回帰）がよく使われる。</div>
+    <h3>ニセの閾値で試す（プラセボ・テスト）</h3>
+    <p class="prose">本当は何も起きていないはずの点数（たとえば70点）を閾値とみなして同じ分析をすると、効果は0に近く、有意にならないはずである。補講を受けていない学生（60点以上）だけを使って試してみよう。</p>
+    <div class="code" data-where="70点をニセの閾値にする" data-pre="exam_rdd"><textarea rows="5">fake <- subset(exam_rdd, Z >= 60)
+fake$Dfake <- ifelse(fake$Z < 70, 1, 0)
+fake$Zfake <- fake$Z - 70
+placebo <- lm(Y ~ Dfake + Zfake + Dfake:Zfake, data = fake)
+round(summary(placebo)$coefficients["Dfake", ], 4)</textarea></div>
+  </section>
+
+  <!-- 9 -->
+  <section id="apply">
+    <h2>9. RDDが使えそうな状況を考える</h2>
+    <p class="prose">RDDが使えるのは、<b>ギリギリで基準を満たした人と満たさなかった人が、その後まったく異なる状況に置かれる</b>ケースである。</p>
+    <div class="tip"><span class="label">例</span>
+      <ul>
+        <li>高校入試で、有名校にギリギリで合格した人と不合格だった人のその後の所得を比べると、有名校で学ぶことの効果が分かる</li>
+        <li>BMIが一定の水準を超えると健康指導を受けることになる場合、その水準の前後で、その後の健康状態を比べる</li>
+        <li>タバコを吸い始めた年齢によって健康への影響が変わるなら、吸い始めた年齢が20歳より前か後かで、死亡率が違うのではないか</li>
+      </ul>
+    </div>
+    <div class="quizbox"><span class="label">考えてみよう</span>
+      <ul>
+        <li>ほかにどんなデータがRDDにふさわしいだろうか。「閾値（基準）」「閾値で変わる処置」「比べる結果」の3つを書き出してみよう。</li>
+        <li>その例で、閾値の前後の人が比較可能でなくなるのは、どんな場合だろうか。</li>
+      </ul>
+      <details class="answer"><summary>考えるときのヒントを見る</summary><div>
+        <ul>
+          <li><b>閾値の例</b>：年齢（18歳、65歳）、所得や資産の基準、企業の従業員数、得票率50％、試験の合格点、誕生日（学年の区切り）など。</li>
+          <li><b>比較可能でなくなる例</b>：本人が数値を操作できる場合（基準をわずかに下回るように所得を調整する、合格点に届くよう採点が甘くなる、など）。また、同じ閾値で<b>別の制度も同時に変わる</b>場合は、どの制度の効果なのか区別できない。</li>
+          <li><b>効果の範囲</b>：RDDで分かるのは閾値付近の人にとっての効果である。閾値から遠い人（前期が30点の学生など）にも同じ効果があるとは限らない。</li>
+        </ul>
+      </div></details>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section id="summary">
+    <h2>10. まとめ</h2>
+    <div class="prose">
+      <ul>
+        <li>RDDは、処置を受けるかどうかが観測できる変数の閾値で決まる状況を利用して、処置の効果を推定する準実験法である。</li>
+        <li>鍵になる仮定は<b>連続性条件</b>：閾値の近くの人どうしは比較可能で、処置がなければ結果の期待値は閾値でジャンプしない。</li>
+        <li>閾値での条件付き期待値のジャンプが、閾値付近の人にとっての平均的な効果 \(\tau\) になる。</li>
+        <li>回帰分析では、割り当て変数を閾値が0になるように変換し（<code>Zc = Z - 60</code>）、処置ダミーとその交差項を入れる。処置ダミーの係数が \(\tau\) の推定値である。この例では約13.0点だった。</li>
+      </ul>
+    </div>
+    <div class="tablewrap">
+      <table class="vars">
+        <thead><tr><th>やりたいこと</th><th>使った関数</th></tr></thead>
+        <tbody>
+          <tr><td>データを読み込む・確認する</td><td><code>read.csv()</code>　<code>head()</code>　<code>nrow()</code>　<code>summary()</code>　<code>View()</code></td></tr>
+          <tr><td>図を描く</td><td><code>plot()</code>　<code>abline()</code>　<code>hist()</code>　<code>curve()</code>　<code>legend()</code></td></tr>
+          <tr><td>条件にあう値の平均</td><td><code>mean(データ$Y[条件])</code></td></tr>
+          <tr><td>変数を作る</td><td><code>mutate()</code>　<code>ifelse()</code></td></tr>
+          <tr><td>回帰分析</td><td><code>lm()</code>　<code>summary()</code>　<code>coef()</code>　<code>confint()</code>　<code>predict()</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    作成：安藤至大（日本大学経済学部）。ブラウザでの実行には <a href="https://docs.r-wasm.org/webr/" target="_blank" rel="noopener">webR</a> を使っています（初回のみR本体とパッケージを読み込みます。入力したコードや結果はこのブラウザの中だけで処理され、外部には送信されません）。
+  </footer>
+</main>
+
+<script type="text/csv" id="exam-data">
+Y,Z
+72.73264912,57.01067661
+76.89065103,75.34741953
+51.04672883,64.33642134
+77.16946688,73.30554562
+72.50693277,45.01319344
+53.01347932,71.77660888
+66.05369454,70.21081986
+69.0775863,71.71386574
+77.51124283,65.65061733
+55.5728633,61.02698351
+76.37966255,73.80280503
+71.01511372,67.26398951
+72.64858574,50.58562024
+43.4060222,26.89133811
+72.09753372,79.15201532
+66.16048193,71.70862411
+78.51880076,57.36817282
+80.63929544,59.41204406
+63.19672103,73.3501424
+79.29197008,65.58134012
+90.23820342,55.32402646
+66.7955442,67.83841788
+72.8187052,55.70324716
+40.66348567,37.3787344
+82.16283136,56.94567858
+72.70720134,73.86384787
+61.08783149,55.79298864
+51.31141206,32.44836886
+63.90775306,56.79604696
+63.23417628,66.28482077
+64.49264681,65.70018191
+72.96628929,35.86075735
+67.35096886,58.7528625
+62.31358926,64.02601068
+61.55130701,45.75161822
+67.08143602,55.06462441
+64.19013188,60.54366629
+71.31764439,49.91519692
+71.04594652,79.77447007
+74.73116724,67.58900526
+58.75259564,64.01324938
+71.21002447,65.73924508
+70.15208834,68.75747707
+83.33446771,58.53697108
+57.24381031,62.4161595
+45.95324668,36.92372887
+68.14898529,59.2874937
+68.24256508,65.63996357
+72.8833713,57.54756958
+58.52826626,76.97478853
+72.81788809,65.07083395
+62.81208879,57.13707689
+61.82198208,62.85395841
+51.2082722,46.72505431
+69.54525495,79.89464347
+84.5745838,88.97382584
+70.47522614,37.10301552
+49.32938358,54.14057018
+62.95926857,68.69499153
+74.29693786,55.24731219
+85.87001235,91.62428007
+85.11604026,56.49370252
+77.41070121,64.62274833
+67.04686724,67.13929981
+55.740547,66.3242863
+66.56710975,64.0483622
+48.92568881,38.57294163
+81.49475073,65.14264226
+83.08742578,58.88426955
+91.84107264,74.20748209
+62.79292945,62.68363462
+55.67430131,56.05556904
+78.14948562,59.2924068
+56.78093697,71.85235873
+67.5490109,48.7117594
+58.4855008,71.95612049
+68.85700164,37.25408943
+64.53233964,65.93906277
+79.99328988,50.21345196
+56.77717892,61.46321996
+64.75228645,57.49835392
+64.20963951,55.38798521
+72.75241113,82.37493901
+53.84894333,39.15447864
+82.87187127,61.29454744
+90.44649583,55.32092626
+72.7107273,65.28556952
+53.728568,64.51964039
+55.05829721,67.1698053
+69.16807602,70.71226165
+60.20449212,51.45385038
+89.4520619,75.08964039
+69.86687863,73.55734555
+80.12478458,55.59207776
+100,90.09576885
+62.0959891,66.66044554
+61.38419326,53.35886991
+50.49417064,61.90843927
+61.72088201,47.34934824
+62.29410691,52.81947028
+57.06692613,60.94572285
+70.85401463,52.04277354
+46.95597842,66.6614826
+74.29730727,58.51123087
+62.56999,66.68731598
+91.71141088,89.77057425
+62.16675278,67.83080063
+71.18542331,73.63950961
+83.25798958,55.64546574
+74.04742065,79.40581283
+41.34510166,61.99153513
+62.26321444,56.17618059
+71.92710394,70.68972711
+65.72395835,48.24678165
+68.0957948,57.63881318
+60.49987828,64.62521239
+66.54101878,52.92827187
+71.95296305,56.24078608
+75.13426956,54.58876328
+68.25280941,62.18119787
+53.60371177,65.40363754
+79.41596355,85.40671633
+55.56831408,64.37182776
+71.02865213,43.24612438
+61.63978374,62.85432862
+60.43237153,70.7757479
+70.91146317,56.43715367
+69.51439442,60.98757405
+69.07408169,46.27110758
+60.50291922,62.19114347
+66.06248061,57.98479629
+72.57300736,41.55839766
+68.68797921,62.37535588
+54.57077256,55.73153861
+75.68893362,60.39132769
+52.12410728,50.4975021
+61.84551021,64.56292385
+74.80711132,54.75239059
+69.2100061,50.66047375
+70.01812929,55.19346815
+50.18498475,46.77311955
+76.85014703,63.2581738
+58.1631726,45.31996239
+67.75979431,53.04870105
+67.29420729,30.7216841
+63.51717673,41.22100634
+81.06136491,88.19982009
+76.05583206,58.64372459
+46.2449933,53.56326042
+58.60697112,58.69374036
+71.2182186,76.29292046
+61.54182037,65.23254961
+62.85331824,59.85901775
+60.34811477,49.16399111
+67.02362439,57.74853126
+57.13668062,54.01794991
+58.7953652,60.61167251
+70.90940507,52.54219277
+53.69804352,30.80445296
+79.41000309,77.13083546
+68.55521115,43.51238241
+60.73199733,68.12554633
+77.88550337,65.50048648
+68.4278692,65.4243958
+62.40964779,52.45302286
+92.96603457,86.95877004
+58.8941389,62.87645112
+56.88779869,50.29866928
+67.1481476,53.97566315
+79.63124594,51.16905334
+81.05721725,79.97000604
+69.10848273,63.28133674
+82.0190123,57.98533908
+69.08300492,58.67774317
+73.62937186,47.31869297
+78.29257308,59.5862676
+74.63115623,68.90723927
+96.82256984,79.58544506
+61.80417979,68.96263673
+69.37328071,86.18750001
+51.76164381,53.78745788
+74.71805082,78.73040435
+84.11064274,54.81359241
+67.22434545,46.64223442
+71.7683811,74.44882892
+76.29765861,57.96028256
+86.36681412,57.61098793
+67.57580964,55.0979461
+69.31597445,40.4582389
+57.82469643,44.2495438
+59.76503281,68.82099496
+66.5143956,68.94521259
+63.88242096,61.41586991
+65.49349203,70.75657057
+47.09157958,47.03790204
+65.62025303,42.12565369
+73.85029152,87.1548871
+59.31019327,50.20161013
+82.18988283,58.39871992
+54.55496663,63.11102429
+</script>
+
+<script type="module">
+const WEBR_URL = 'https://webr.r-wasm.org/v0.6.0/webr.mjs';
+const CSV_TEXT = document.getElementById('exam-data').textContent.trim() + '\n';
+
+/* ---------- データの保存ボタン（ページ内のデータから作る） ---------- */
+try {
+  const a = document.getElementById('dl-csv');
+  a.href = URL.createObjectURL(new Blob([CSV_TEXT], { type: 'text/csv' }));
+} catch (_) {}
+if (location.protocol.startsWith('http')) {
+  const u = new URL('exam_rdd.csv', location.href).href;
+  document.getElementById('url-note').innerHTML =
+    '　ファイルを置かずに、<code>exam_rdd &lt;- read.csv("' + u + '")</code> とURLから直接読み込んでもよい。';
+}
+
+/* ---------- 状態表示 ---------- */
+const statusEl = document.getElementById('rstatus');
+const statusText = document.getElementById('rstatus-text');
+const btnStart = document.getElementById('btn-start');
+const btnRestart = document.getElementById('btn-restart');
+function setStatus(phase, text) {
+  statusEl.dataset.phase = phase;
+  statusText.textContent = text;
+  btnStart.hidden = phase !== 'idle' && phase !== 'failed';
+  btnRestart.hidden = phase === 'idle' || phase === 'starting';
+}
+
+/* ---------- R 側の準備用コード ---------- */
+const R_SETUP = String.raw`
+local({
+  e <- new.env()
+  e$View <- function(x, title) {
+    if (missing(title)) title <- deparse(substitute(x))[1]
+    assign(".lec_view", list(x = x, title = title), envir = globalenv())
+    invisible(NULL)
+  }
+  e$lec_help <- function(topic) {
+    pk <- sub("^package:", "", grep("^package:", find(topic), value = TRUE))
+    files <- character(0)
+    for (p in pk) {
+      files <- as.character(do.call(utils::help, list(topic, package = p)))
+      if (length(files)) break
+    }
+    if (!length(files)) files <- as.character(do.call(utils::help, list(topic)))
+    if (!length(files)) {
+      cat("「", topic, "」のヘルプが見つかりませんでした。綴りと、library() でパッケージを読み込んだかを確認してください。\n", sep = "")
+      return(invisible(NULL))
+    }
+    cat("\003（ブラウザ版ではここに表示します。RStudioでは右下の Help タブに表示されます）\n")
+    tools::Rd2txt(utils:::.getHelpFile(files[1]), options = list(underline_titles = FALSE))
+    invisible(NULL)
+  }
+  e$"?" <- function(e1, e2) {
+    topic <- if (missing(e2)) deparse(substitute(e1)) else deparse(substitute(e2))
+    e$lec_help(gsub("^[\"'\x60]|[\"'\x60]$", "", topic))
+  }
+  e$help <- function(topic, ...) {
+    if (missing(topic)) { cat("help(調べたい名前) のように使います\n"); return(invisible(NULL)) }
+    topic <- deparse(substitute(topic))
+    e$lec_help(gsub("^[\"'\x60]|[\"'\x60]$", "", topic))
+  }
+  e$install.packages <- function(pkgs, ...) {
+    need <- pkgs[!nzchar(vapply(pkgs, function(p) system.file(package = p), ""))]
+    if (length(need)) webr::install(need, quiet = TRUE)
+    cat("\003（ブラウザ版）", paste(pkgs, collapse = ", "), " を使える状態にしました。RStudioでは、ここでダウンロードとインストールが行われます\n", sep = "")
+    invisible(NULL)
+  }
+  e$lec_run <- function(code) {
+    exprs <- tryCatch(parse(text = code, keep.source = TRUE), error = function(err) err)
+    if (inherits(exprs, "error")) {
+      cat("Error: ", conditionMessage(exprs), "\n", sep = "", file = stderr())
+      return(invisible(NULL))
+    }
+    srcs <- attr(exprs, "srcref")
+    lines <- strsplit(code, "\n", fixed = TRUE)[[1]]
+    prev <- 0L
+    for (i in seq_along(exprs)) {
+      if (!is.null(srcs)) {
+        f <- srcs[[i]][1]; last <- srcs[[i]][3]
+        if (f > prev) {
+          pre <- if (f > prev + 1L) lines[(prev + 1L):(f - 1L)] else character(0)
+          pre <- pre[nzchar(trimws(pre))]
+          if (length(pre)) cat(paste0("\001> ", pre), sep = "\n")
+          src <- lines[f:last]
+          cat(paste0("\001", c("> ", rep("+ ", length(src) - 1)), src), sep = "\n")
+        }
+        prev <- max(prev, last)
+      } else {
+        src <- deparse(exprs[[i]])
+        cat(paste0("\001", c("> ", rep("+ ", length(src) - 1)), src), sep = "\n")
+      }
+      ok <- tryCatch({
+        r <- withVisible(eval(exprs[[i]], globalenv()))
+        if (r$visible) print(r$value)
+        TRUE
+      }, error = function(err) {
+        cl <- conditionCall(err)
+        head <- if (is.null(cl)) "Error: " else paste0("Error in ", deparse(cl, nlines = 1), " : ")
+        cat(head, conditionMessage(err), "\n", sep = "", file = stderr())
+        FALSE
+      })
+      if (!ok) break
+    }
+    invisible(NULL)
+  }
+  e$lec_run_svg <- function(code, width, height) {
+    s <- svglite::svgstring(width = width, height = height, pointsize = 12, standalone = TRUE)
+    id <- grDevices::dev.cur()
+    on.exit(if (id %in% grDevices::dev.list()) grDevices::dev.off(id))
+    e$lec_run(code)
+    if (id %in% grDevices::dev.list()) grDevices::dev.off(id)
+    on.exit()
+    out <- s()
+    out[nzchar(out)]
+  }
+  e$lec_view_tsv <- function() {
+    if (!exists(".lec_view", envir = globalenv(), inherits = FALSE)) return("")
+    v <- get(".lec_view", envir = globalenv())
+    rm(".lec_view", envir = globalenv())
+    d <- as.data.frame(v$x)
+    n <- nrow(d)
+    d <- utils::head(d, 1000)
+    m <- as.matrix(format(d))
+    m[] <- gsub("[\t\n]", " ", trimws(m))
+    paste(c(paste(v$title, n, ncol(d), sep = "\t"),
+            paste(c("", names(d)), collapse = "\t"),
+            paste(seq_len(nrow(m)), apply(m, 1, paste, collapse = "\t"), sep = "\t")),
+          collapse = "\n")
+  }
+  attach(e, name = "lecture_tools", warn.conflicts = FALSE)
+})
+options(width = 80, warn = 1)
+`;
+
+/* ---------- webR の起動と実行 ---------- */
+let webR = null, starting = null, ChannelType = null, WebRClass = null;
+// 図の取り込み方。canvas 方式が使えない・失敗した場合は svglite（SVG）方式に切り替える
+let graphicsMode = (typeof OffscreenCanvas === 'undefined') ? 'svg' : 'canvas';
+const installed = new Set();
+let queue = Promise.resolve();
+function serial(fn) { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; }
+
+async function startR() {
+  if (webR) return webR;
+  if (starting) return starting;
+  setStatus('starting', 'ブラウザ版R：起動中…（初回は数十秒かかります）');
+  starting = (async () => {
+    if (!WebRClass) {
+      const m = await import(WEBR_URL);
+      WebRClass = m.WebR; ChannelType = m.ChannelType;
+    }
+    const w = new WebRClass({ channelType: ChannelType.PostMessage, interactive: false });
+    await w.init();
+    // ページに埋め込んだデータを、ブラウザ版Rの作業ディレクトリに exam_rdd.csv として置く
+    await w.FS.writeFile('/home/web_user/exam_rdd.csv', new TextEncoder().encode(CSV_TEXT));
+    await w.evalRVoid('setwd("/home/web_user")');
+    await w.evalRVoid(R_SETUP);
+    webR = w;
+    setStatus('ready', 'ブラウザ版R：準備完了');
+    return w;
+  })();
+  starting.catch((e) => {
+    starting = null;
+    setStatus('failed', 'ブラウザ版R：起動できませんでした（' + (e?.message ?? e) + '）');
+  });
+  return starting;
+}
+
+async function restartR() {
+  try { webR?.close(); } catch (_) {}
+  webR = null; starting = null; installed.clear(); queue = Promise.resolve();
+  await startR();
+}
+
+function detectPackages(code) {
+  const pk = new Set();
+  const lib = /\b(?:library|require)\(\s*["']?([A-Za-z][A-Za-z0-9.]*)["']?/g;
+  let m; while ((m = lib.exec(code))) pk.add(m[1]);
+  const ins = /install\.packages\(([^)]*)\)/g;
+  while ((m = ins.exec(code))) for (const q of m[1].matchAll(/["']([A-Za-z][A-Za-z0-9.]*)["']/g)) pk.add(q[1]);
+  return [...pk];
+}
+
+async function ensurePackages(w, pkgs) {
+  const todo = [];
+  for (const p of pkgs) {
+    if (installed.has(p)) continue;
+    const has = await w.evalRString(`nzchar(system.file(package = "${p}")) |> as.character()`);
+    if (has === 'TRUE') installed.add(p); else todo.push(p);
+  }
+  if (!todo.length) return;
+  setStatus('busy', `ブラウザ版R：パッケージを読み込み中（${todo.join(', ')}）…`);
+  await w.installPackages(todo, { quiet: true, mount: true });
+  todo.forEach((p) => installed.add(p));
+}
+
+async function condText(o) {
+  try { const msg = await o.data.get('message'); return (await msg.toArray()).join(''); }
+  catch (_) { return String(o.data); }
+}
+
+// ブロックの前提となるデータや変数（先に実行していなくても、ブラウザ版では自動で用意する）
+// check が TRUE でなければ code を実行する。data-pre に書いた順に確認する
+const PRE = {
+  exam_rdd: { check: 'exists("exam_rdd", envir = globalenv(), inherits = FALSE)',
+              code: 'exam_rdd <- read.csv("exam_rdd.csv")' },
+  D:        { check: 'is.data.frame(exam_rdd) && "D" %in% names(exam_rdd)',
+              code: 'exam_rdd$D <- ifelse(exam_rdd$Z < 60, 1, 0)' },
+  Zc:       { check: 'is.data.frame(exam_rdd) && "Zc" %in% names(exam_rdd)',
+              code: 'exam_rdd$Zc <- exam_rdd$Z - 60' },
+  result:   { check: 'exists("result", envir = globalenv(), inherits = FALSE) && inherits(result, "lm")',
+              code: 'result <- lm(Y ~ D + Zc + D:Zc, data = exam_rdd)' },
+};
+
+function runCode(code, needs, plot, pre = []) {
+  return serial(async () => {
+    const w = await startR();
+    const notes = [];
+    try {
+      await ensurePackages(w, [...new Set([...needs, ...detectPackages(code)])]);
+      // このブロックの前提となるパッケージが未読込なら、黙って読み込んでおく
+      for (const p of needs) {
+        const att = await w.evalRString(`("package:${p}" %in% search()) |> as.character()`);
+        if (att !== 'TRUE' && !new RegExp(`library\\(\\s*["']?${p.replace('.', '\\.')}`).test(code)) {
+          await w.evalRVoid(`suppressPackageStartupMessages(library("${p}", character.only = TRUE))`);
+          notes.push(`（前提として library(${p}) を実行しました）`);
+        }
+      }
+      for (const v of pre) {
+        const p = PRE[v]; if (!p) continue;
+        const ok = await w.evalRString(`isTRUE(tryCatch(${p.check}, error = function(e) FALSE)) |> as.character()`);
+        if (ok !== 'TRUE') {
+          await w.evalRVoid(p.code);
+          notes.push(`（前提として ${p.code} を実行しました）`);
+        }
+      }
+    } catch (e) {
+      return { lines: [{ type: 'error', text: '準備に失敗しました：' + (e?.message ?? e) }], images: [], svgs: [], view: '', notes, fatal: true };
+    }
+    setStatus('busy', 'ブラウザ版R：実行中…');
+    await w.objs.globalEnv.bind('.lec_code', code);
+    const shelter = await new w.Shelter();
+    const opts = { withAutoprint: false, captureStreams: true, captureConditions: true };
+    try {
+      let cap = null, images = [], svgs = [];
+      if (graphicsMode === 'canvas') {
+        try {
+          cap = await shelter.captureR('lec_run(.lec_code)', {
+            ...opts, captureGraphics: { width: plot[0], height: plot[1], pointsize: 14, bg: 'white' },
+          });
+          images = cap.images;
+        } catch (e) {
+          console.warn('canvas 方式で失敗したため SVG 方式に切り替えます', e);
+          graphicsMode = 'svg';
+          cap = null;
+        }
+      }
+      if (!cap) {
+        try {
+          await ensurePackages(w, ['svglite']);
+          setStatus('busy', 'ブラウザ版R：実行中…');
+          cap = await shelter.captureR(`lec_run_svg(.lec_code, ${plot[0] / 96}, ${plot[1] / 96})`, { ...opts, captureGraphics: false });
+          svgs = await cap.result.toArray();
+        } catch (e) {
+          return { lines: [{ type: 'error', text: 'このブラウザではRを実行できませんでした（' + (e?.name ? e.name + ': ' : '') + (e?.message ?? e) + '）' }],
+                   images: [], svgs: [], view: '', notes, fatal: true };
+        }
+      }
+      const lines = [];
+      for (const o of cap.output) {
+        if (o.type === 'stdout' || o.type === 'stderr') lines.push({ type: o.type, text: String(o.data) });
+        else lines.push({ type: o.type, text: (await condText(o)).replace(/\n$/, '') });
+      }
+      const view = await w.evalRString('lec_view_tsv()');
+      return { lines, images, svgs, view, notes };
+    } catch (e) {
+      return { lines: [{ type: 'error', text: String(e?.message ?? e) }], images: [], svgs: [], view: '', notes, fatal: true };
+    } finally {
+      await shelter.purge();
+      await w.evalRVoid('rm(list = intersect(".lec_code", ls(globalenv(), all.names = TRUE)), envir = globalenv())').catch(() => {});
+      setStatus('ready', 'ブラウザ版R：準備完了');
+    }
+  });
+}
+
+/* ---------- エラーの手がかり ---------- */
+function hintFor(t) {
+  let m;
+  if ((m = /could not find function ["“]([^"”]+)["”]/.exec(t))) {
+    let s = `関数「${m[1]}」が見つかりません。綴り（大文字・小文字も区別されます）を確認し、その関数を含むパッケージを library() で読み込んだか確認しましょう。`;
+    if (m[1] === '%>%' || m[1] === 'mutate') s += ' この関数は dplyr に入っているので、先に library(dplyr) を実行しましょう。';
+    return s;
+  }
+  if ((m = /object ['‘]([^'’]+)['’] not found/.exec(t))) {
+    let s = `「${m[1]}」という名前のデータや変数が見つかりません。綴りを確認し、それを作る行を先に実行したか確認しましょう。`;
+    if (m[1] === 'exam_rdd') s += ' 「3. データを読み込む」の read.csv() の行を先に実行しましょう。';
+    if (m[1] === 'D' || m[1] === 'Zc') s += ' 「7. 回帰分析で効果を推定する」で mutate() を使って変数を作る行を先に実行しましょう。';
+    if (m[1] === 'result') s += ' 「7.」のステップ3で lm() を実行して result を作りましょう。';
+    return s;
+  }
+  if (/cannot open file|No such file/.test(t))
+    return 'ファイルが見つかりません。RStudioでは、exam_rdd.csv を作業ディレクトリ（getwd() で確認できる）に置いてから実行しましょう。';
+  if ((m = /there is no package called ['‘]([^'’]+)['’]/.exec(t)))
+    return `パッケージ「${m[1]}」がインストールされていません。先に install.packages("${m[1]}") を実行しましょう。`;
+  if (/unexpected/.test(t))
+    return '書き方の誤りです。括弧「(」「)」の数、引用符「"」の閉じ忘れ、カンマの過不足、全角文字（全角スペースや全角の括弧）が混ざっていないかを確認しましょう。';
+  if (/Unicode|invalid multibyte|\\u3000/.test(t))
+    return '全角文字が混ざっている可能性があります。全角スペースや全角の記号を半角に直しましょう。';
+  return '';
+}
+
+/* ---------- 表示 ---------- */
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+function renderView(tsv) {
+  const rows = tsv.split('\n');
+  const [title, n, k] = rows[0].split('\t');
+  const box = el('div', 'viewer');
+  box.append(el('div', 'vt', `View(${title})：${n}行 × ${k}列` + (Number(n) > 1000 ? '（先頭1000行を表示）' : '') + '　※RStudioでは左上に表示されます'));
+  const sc = el('div', 'scroll'); sc.tabIndex = 0;
+  const table = el('table');
+  const thead = el('thead'); const trh = el('tr');
+  rows[1].split('\t').forEach((h) => trh.append(el('th', null, h)));
+  thead.append(trh); table.append(thead);
+  const tb = el('tbody');
+  for (const r of rows.slice(2)) { const tr = el('tr'); r.split('\t').forEach((c) => tr.append(el('td', null, c))); tb.append(tr); }
+  table.append(tb); sc.append(table); box.append(sc);
+  return box;
+}
+
+function renderResult(out, res) {
+  out.replaceChildren();
+  const pre = el('pre');
+  const add = (cls, text) => { pre.append(el('span', cls, text + '\n')); };
+  for (const n of res.notes) add('note-line', n);
+  const hints = new Set();
+  for (const ln of res.lines) {
+    if (ln.type === 'stderr' || ln.type === 'error') { const h = hintFor(ln.text); if (h) hints.add(h); }
+    const parts = ln.text.replace(/\n$/, '').split('\n');
+    parts.forEach((p, j) => {
+      if (p.startsWith('\u0001')) add('echo', p.slice(1));
+      else if (p.startsWith('\u0003')) add('note-line', p.slice(1));
+      else if (ln.type === 'stdout') add('', p);
+      else if (ln.type === 'warning') add('warn', (j === 0 ? 'Warning: ' : '') + p);
+      else if (ln.type === 'message') add('msg', p);
+      else add('err', p);
+    });
+  }
+  out.append(pre);
+  for (const h of hints) out.append(el('div', 'hint', '💡 ' + h));
+  if (res.view) out.append(renderView(res.view));
+  for (const svg of res.svgs || []) {
+    const im = document.createElement('img');
+    im.className = 'plot'; im.alt = 'Rで描いた図';
+    im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    out.append(im);
+  }
+  if (res.fatal) {
+    out.append(el('div', 'hint', location.protocol === 'file:'
+      ? '💡 このページをファイルとして直接開いているため、ブラウザ版Rが動かない可能性があります。Webページ（URL）から開き直してください。それでも動かない場合は、Google Chrome か Microsoft Edge で開いてください。'
+      : '💡 ページを再読み込みしてもう一度試してください。それでも動かない場合は、Google Chrome か Microsoft Edge で開いてください。'));
+  }
+  for (const img of res.images) {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    c.getContext('2d').drawImage(img, 0, 0);
+    c.setAttribute('role', 'img'); c.setAttribute('aria-label', 'Rで描いた図');
+    out.append(c);
+  }
+  const tools = el('div', 'out-tools');
+  const clear = el('button', 'btn', '結果を消す'); clear.type = 'button';
+  clear.addEventListener('click', () => { out.hidden = true; out.replaceChildren(); });
+  tools.append(clear); out.append(tools);
+}
+
+/* ---------- コードブロックの組み立て ---------- */
+function autosize(ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 4) + 'px'; }
+
+async function copyText(text, btn) {
+  let ok = false;
+  try { await navigator.clipboard.writeText(text); ok = true; }
+  catch (_) {
+    const t = document.createElement('textarea'); t.value = text; document.body.append(t); t.select();
+    try { ok = document.execCommand('copy'); } catch (_) {} t.remove();
+  }
+  const old = btn.textContent; btn.textContent = ok ? 'コピーしました' : 'コピーできませんでした';
+  setTimeout(() => { btn.textContent = old; }, 1500);
+}
+
+document.querySelectorAll('.code').forEach((block) => {
+  const ta = block.querySelector('textarea');
+  ta.spellcheck = false; ta.setAttribute('autocapitalize', 'off'); ta.setAttribute('autocomplete', 'off');
+  ta.setAttribute('aria-label', 'Rのコード（編集できます）');
+  const original = ta.value;
+  const bar = el('div', 'code-bar');
+  bar.append(el('span', 'where', block.dataset.where || 'R'));
+  const reset = el('button', 'btn', '元に戻す'); reset.type = 'button'; reset.hidden = true;
+  const copy = el('button', 'btn copy', 'コピー'); copy.type = 'button';
+  const run = el('button', 'btn run', '▶ ブラウザで実行'); run.type = 'button';
+  bar.append(reset, copy, run);
+  block.prepend(bar);
+  const out = el('div', 'out'); out.hidden = true; out.setAttribute('aria-live', 'polite');
+  block.append(out);
+  const needs = (block.dataset.needs || '').split(/\s+/).filter(Boolean);
+  const pre = (block.dataset.pre || '').split(/\s+/).filter(Boolean);
+  const plot = (block.dataset.plot || '720x480').split('x').map(Number);
+
+  ta.addEventListener('input', () => { autosize(ta); reset.hidden = ta.value === original; });
+  reset.addEventListener('click', () => { ta.value = original; autosize(ta); reset.hidden = true; });
+  copy.addEventListener('click', () => copyText(ta.value, copy));
+
+  async function doRun() {
+    run.disabled = true;
+    out.hidden = false;
+    out.replaceChildren(el('div', 'running', webR ? '実行中…' : 'ブラウザ版Rを起動しています…（初回は数十秒かかります）'));
+    try {
+      const res = await runCode(ta.value, needs, plot, pre);
+      renderResult(out, res);
+    } catch (e) {
+      out.replaceChildren(el('pre', 'err', 'ブラウザ版Rを起動できませんでした：' + (e?.message ?? e) + '\n通信環境を確認して、ページを再読み込みしてください。'));
+    } finally { run.disabled = false; }
+  }
+  run.addEventListener('click', doRun);
+  ta.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); doRun(); }
+    else if (ev.key === 'Tab' && !ev.shiftKey && !ev.altKey) {
+      ev.preventDefault();
+      const s = ta.selectionStart, e2 = ta.selectionEnd;
+      ta.setRangeText('  ', s, e2, 'end'); ta.dispatchEvent(new Event('input'));
+    }
+  });
+  requestAnimationFrame(() => autosize(ta));
+});
+
+if (location.protocol === 'file:') document.getElementById('filenote').hidden = false;
+
+btnStart.addEventListener('click', () => { startR().catch(() => {}); });
+btnRestart.addEventListener('click', () => {
+  document.querySelectorAll('.out').forEach((o) => { o.hidden = true; o.replaceChildren(); });
+  restartR().catch(() => {});
+});
+</script>
+</body>
+</html>
